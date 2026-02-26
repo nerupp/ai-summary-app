@@ -2,23 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 
-// Initialize Supabase client (read config from environment variables)
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Supabase environment variables are not set');
-}
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
 export async function POST(req: NextRequest) {
+  // 1. 在函数内部初始化 Supabase 客户端
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json(
+      { ok: false, error: 'Server configuration error: Supabase variables missing' },
+      { status: 500 }
+    );
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
   try {
-    // Parse form data (contains uploaded file)
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
 
-    // Validate file existence
     if (!file) {
       return NextResponse.json(
         { ok: false, error: 'No file uploaded' },
@@ -26,7 +27,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate file type (match Supabase bucket configuration)
     const allowedMimeTypes = ['text/plain', 'application/pdf', 'text/markdown'];
     if (!allowedMimeTypes.includes(file.type)) {
       return NextResponse.json(
@@ -35,7 +35,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate file size (10MB = 10 * 1024 * 1024 = 10485760 bytes)
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       return NextResponse.json(
@@ -44,11 +43,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Generate random file name (avoid duplication + security)
     const fileName = `${uuidv4()}-${file.name}`;
     const bucketName = 'ai-summary-documents';
 
-    // Upload file to Supabase storage bucket
     const { data, error } = await supabase.storage
       .from(bucketName)
       .upload(fileName, file, {
@@ -63,12 +60,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get public access URL of the file
     const { data: urlData } = await supabase.storage
       .from(bucketName)
       .getPublicUrl(data.path);
 
-    // Return upload result (include file URL for subsequent AI summarization)
     return NextResponse.json({
       ok: true,
       message: 'File uploaded successfully',
